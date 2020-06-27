@@ -63,6 +63,6 @@ export class Application {
 
     async run() {
 
-        await this.net.start_server("test", "10.0.0.226", 4200, "core/telnet", "core/telnet", false);
+        await this.net.start_server("test", "0.0.0.0", 4200, "core/telnet", false);
     }
 }

@@ -1,4 +1,4 @@
-import {Connection, Protocol, Handler} from "../../net.ts";
+import {Connection, Server} from "../../net.ts";
 
 enum TC {
     NUL = 0,
@@ -48,33 +48,40 @@ class TelnetOption {
     }
 }
 
+
+
 class MXPOption extends TelnetOption {
-    code = 91;
+    code = TC.MXP;
 }
 
 class MCCP2Option extends TelnetOption {
-    code = 86
+    code = TC.MCCP2;
 }
 
 class MCCP3Option extends TelnetOption {
-    code = 87
+    code = TC.MCCP3;
 }
 
 class GMCPOption extends TelnetOption {
-    code = 201
+    code = TC.GMCP;
 }
 
 class MSDPOption extends TelnetOption {
-    code = 69
+    code = TC.MSDP;
 }
 
 class TTYPEOption extends TelnetOption {
-    code = 24;
+    code = TC.TTYPE;
 }
 
-const OPTIONS: typeof TelnetOption[] = [MXPOption, MCCP2Option, MCCP3Option, GMCPOption, MSDPOption, TTYPEOption];
+class SGAOption extends TelnetOption {
+    code = TC.SGA;
+}
 
-export class TelnetProtocol extends Protocol {
+const OPTIONS: typeof TelnetOption[] = [MXPOption, MCCP2Option, MCCP3Option, GMCPOption, MSDPOption, TTYPEOption,
+    SGAOption];
+
+export class TelnetProtocol extends Connection {
     private telnet_state: TelnetState = TelnetState.Data;
     private command_buffer: number[] = [];
     private iac_command: number = 0;
@@ -84,8 +91,8 @@ export class TelnetProtocol extends Protocol {
     private mccp3: boolean = false;
     private options: Map<number, TelnetOption> = new Map<number, TelnetOption>();
 
-    constructor(conn: Connection) {
-        super(conn);
+    constructor(conn: Deno.Conn, id: number, srv: Server) {
+        super(conn, id, srv);
         for (const op of OPTIONS) {
             let tel_op = new op(this);
             this.options.set(tel_op.code, tel_op);
@@ -97,7 +104,7 @@ export class TelnetProtocol extends Protocol {
             // Simple wrapper around data_out for handling mccp2 compression. Implement it here
         }
         else {
-            await this.data_out(buffer);
+            this.data_out(buffer);
         }
     }
 
@@ -106,7 +113,7 @@ export class TelnetProtocol extends Protocol {
             // Implement decompression here and call receive_data.
         }
         else {
-            await this.receive_data(buffer);
+            this.receive_data(buffer);
         }
     }
 
@@ -168,7 +175,7 @@ export class TelnetProtocol extends Protocol {
                     break;
                 }
                 case TelnetState.Command: {
-                    await this.parse_iac_command(this.iac_command, b);
+                    this.parse_iac_command(this.iac_command, b);
                     this.iac_command = 0;
                     this.telnet_state = TelnetState.Data;
                     break;
@@ -176,14 +183,14 @@ export class TelnetProtocol extends Protocol {
                 case TelnetState.NewLine: {
                     switch(b) {
                         case TC.LF: {
-                            await this.parse_command(this.command_buffer);
+                            this.parse_command(this.command_buffer);
                             this.command_buffer = [];
                             this.telnet_state = TelnetState.Data;
                             break;
                         }
                         // Not sure what else to do here... if we don't get an LF, return to normal mode.
                         default: {
-                            await this.parse_command(this.command_buffer);
+                            this.parse_command(this.command_buffer);
                             this.command_buffer = [b];
                             this.telnet_state = TelnetState.Data;
                             break;
@@ -212,14 +219,13 @@ export class TelnetProtocol extends Protocol {
                 case TelnetState.SubEscaped: {
                     switch(b) {
                         case TC.SE: {
-                            await this.parse_subnegotiation(this.sub_command, this.sub_buffer);
+                            this.parse_subnegotiation(this.sub_command, this.sub_buffer);
                             this.sub_command = 0;
                             this.sub_buffer = [];
                         }
                     }
                     break;
                 }
-
 
             }
 
@@ -230,7 +236,7 @@ export class TelnetProtocol extends Protocol {
         console.log(`RECEIVED BYTES: ${command}`);
         let text = String.fromCharCode.apply(null, command);
         console.log(`DECODED TELNET COMMAND: ${text} - ${text.length}`);
-        await this.send_data(this.encoder.encode(`TELNET ECHO COMMAND: ${text}\n`));
+        this.send_data(this.encoder.encode(`TELNET ECHO COMMAND: ${text}\n`));
     }
 
     async parse_iac_command(command: number, option: number) {
@@ -240,10 +246,5 @@ export class TelnetProtocol extends Protocol {
     async parse_subnegotiation(option: number, data: number[]) {
 
     }
-
-}
-
-
-export class TelnetHandler extends Handler {
 
 }
