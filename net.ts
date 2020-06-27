@@ -1,3 +1,5 @@
+import {Application} from "./app.ts";
+
 export class Protocol {
     protected encoder: TextEncoder;
     protected decoder: TextDecoder;
@@ -90,8 +92,8 @@ export class Server {
     }
 }
 
-
 export class NetworkManager {
+    private app: Application;
     private next_id: number;
     private tls: boolean;
     private readonly cert: string;
@@ -101,7 +103,8 @@ export class NetworkManager {
     private servers: Map<string, Server>;
     private connections: Map<number, Connection>;
 
-    constructor(certFile = "", keyFile = "") {
+    constructor(app: Application, certFile = "", keyFile = "") {
+        this.app = app;
         this.next_id = 0;
         this.tls = false;
         this.cert = certFile;
@@ -131,17 +134,16 @@ export class NetworkManager {
     }
 
     async start_server(name: string, addr: string, port: number, protocol: string, handler: string, tls: boolean) {
-        if (!this.protocols.has(protocol)) {
-            console.log("Unrecognized protocol!");
-            return;
-        }
-        let prot = this.protocols.get(protocol);
 
-        if(!this.handlers.has(handler)) {
-            console.log("Unrecognized handler!");
-            return;
+        let prot = this.protocols.get(protocol);
+        if (prot === undefined) {
+            throw "Unrecognized protocol!";
         }
+
         let hand = this.handlers.get(handler);
+        if(hand === undefined) {
+            throw "Unrecognized handler!";
+        }
 
         let listener;
 
@@ -152,10 +154,9 @@ export class NetworkManager {
             listener = Deno.listen({hostname: addr, port: port});
         }
 
-        // not sure why this is freaking out.
-        // @ts-ignore
         let srv = new Server(this, name, listener, prot, hand);
         this.servers.set(name, srv);
-        await srv.start();
+        srv.start();
+        console.log("DOES THIS EVER RUN?!");
     }
 }

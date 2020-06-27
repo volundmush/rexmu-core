@@ -1,4 +1,4 @@
-import {Connection, Protocol, Handler} from "./net.ts";
+import {Connection, Protocol, Handler} from "../../net.ts";
 
 enum TC {
     NUL = 0,
