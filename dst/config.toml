@@ -1,0 +1,35 @@
+# This is a TOML config file.
+
+# The server name. This will be displayed to people connecting.
+name = "rex"
+
+# The plugins to use. List of strings.
+plugins = ["core"]
+
+# Don't put more standalone variables below this... it's just asking for trouble. TOML doesn't like it.
+
+
+# File paths to certification file and keyfile for TLS. If these don't check out, TLS support will not be enabled
+# and no TLS servers will start.
+[tls]
+cert = ""
+key = ""
+
+# This might be more complex later but for now it's just SQLite3
+[database]
+name = "./data/rex.sqlite3"
+
+# Server definitions.
+[[server]]
+name = "telnet"
+tls = false
+interface = "0.0.0.0"
+port = 4201
+protocol = "telnet"
+
+[[server]]
+name = "telnet_tls"
+tls = true
+interface = "0.0.0.0"
+port = 4202
+protocol = "telnet"

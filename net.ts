@@ -1,5 +1,5 @@
 import {Application} from "./app.ts";
-
+import { fs } from "./deps.ts";
 
 // This class is the basic protocol.
 export class Connection {
@@ -87,19 +87,24 @@ export class Server {
 }
 
 export class NetworkManager {
-    private app: Application;
+    public readonly app: Application;
     private next_id: number = 0;
-    private tls: boolean = false;
-    //private readonly cert: string;
-    //private readonly key: string;
+    private readonly tls: boolean = false;
+    private readonly cert: string;
+    private readonly key: string;
     private protocols: Map<string, typeof Connection> = new Map<string, typeof Connection>();
     private servers: Map<string, Server> = new Map<string, Server>();
     private connections: Map<number, Connection> = new Map<number, Connection>();
 
     constructor(app: Application) {
         this.app = app;
-        //this.cert = certFile;
-        //this.key = keyFile;
+
+        // let's try to setup TLS if possible.
+        this.cert = app.config.config.tls.cert;
+        this.key = app.config.config.tls.key;
+        if(fs.exists(this.cert) && fs.exists(this.key)) {
+            //this.tls = true;
+        }
     }
 
     generate_id() : number {
@@ -114,6 +119,16 @@ export class NetworkManager {
 
     register_protocol(name: string, protocol: typeof Connection) {
         this.protocols.set(name, protocol);
+    }
+
+    async start() {
+        for (const sdef of this.app.config.config.server) {
+            if(sdef.tls && !this.tls) {
+                // Only use TLS if TLS is properly ready.
+                continue;
+            }
+            this.start_server(sdef.name, sdef.interface, sdef.port, sdef.protocol, sdef.tls);
+        }
     }
 
     async start_server(name: string, addr: string, port: number, protocol: string, tls: boolean) {

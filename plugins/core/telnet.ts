@@ -49,7 +49,6 @@ class TelnetOption {
 }
 
 
-
 class MXPOption extends TelnetOption {
     code = TC.MXP;
 }
@@ -78,7 +77,13 @@ class SGAOption extends TelnetOption {
     code = TC.SGA;
 }
 
-const OPTIONS: typeof TelnetOption[] = [MXPOption, MCCP2Option, MCCP3Option, GMCPOption, MSDPOption, TTYPEOption,
+const OPTIONS: typeof TelnetOption[] = [MXPOption,
+    // disabling MCCP due to lack of ZLIB support just yet.
+    //MCCP2Option,
+    //MCCP3Option,
+    GMCPOption,
+    MSDPOption,
+    TTYPEOption,
     SGAOption];
 
 export class TelnetProtocol extends Connection {
