@@ -8,15 +8,11 @@ export class Plugin implements IPlugin {
 
     protected readonly core: ICore;
 
-
-
     constructor(core: ICore) {
         this.core = core;
     }
 
-
-
-    public async atUpdate(delta: number) {
+    public async atUpdate(delta: number, source: string) {
 
     }
     public getUpdateOrder() {
@@ -60,6 +56,7 @@ export class Plugin implements IPlugin {
 
 export class Core implements ICore {
     private readonly pluginsMap: Map<string, IPlugin> = new Map<string, IPlugin>();
+    private readonly modules: Map<string, any> = new Map<string, any>();
     private readonly config: RexConfig;
     private readonly plugins: IPlugin[] = [];
     private readonly connections: Map<string, IConnection> = new Map<string, IConnection>();
@@ -69,18 +66,40 @@ export class Core implements ICore {
 
     constructor(config: Partial<RexConfig>) {
         this.config = {...DefaultConfig, ...config};
-        this.setup();
     }
 
     public getAbortSignal(): AbortSignal {
         return this.abortController.signal;
     }
 
-    protected setup() {
-        this.setupLogger();
+    protected async setup() {
+        await this.setupLogger();
+        await this.setupModules();
     }
 
-    protected setupLogger() {
+    protected async setupModules() {
+        for (const [key, value] of this.config.modules.entries()) {
+            let mod;
+            log.info(`Loading module '${key}' from '${value}'...`);
+            if (typeof value === "string") {
+                // If the value is a string, treat it as a module URL and import it
+                mod = await import(value);
+            } else {
+                // Otherwise, assume it's an already-loaded module object
+                mod = value;
+            }
+
+            // Check if the module has an `init` function before calling it
+            if (mod && mod.init && typeof mod.init === "function") {
+                this.modules.set(key, mod);
+                mod.init(key, this);
+            } else {
+                throw new Error(`Module '${key}' does not have an init function or is not a module.`);
+            }
+        }
+    }
+
+    protected async setupLogger() {
         log.setup({
             handlers: {
                 console: new log.handlers.ConsoleHandler("INFO"),
@@ -98,21 +117,27 @@ export class Core implements ICore {
     public async atColdStart() {
 
     }
-    public async atWarmStart(): Promise<void> {
+
+    public async atWarmStart() {
 
     }
-    public async atShutdown(): Promise<void> {
+
+    public async atShutdown() {
 
     }
-    public async atReload(): Promise<void> {
+
+    public async atReload() {
 
     }
+
     public getConnectionCount(): number {
         return this.connections.size;
     }
+
     public getConnections(): IConnection[] {
       return [...this.connections.values()]
     }
+
     public getConnection(arg0: string) {
       return this.connections.get(arg0);
     }
@@ -128,6 +153,9 @@ export class Core implements ICore {
     public addPlugin<T extends IPlugin>(pluginClass: Newable<T>): void {
         // The 'new () => T' type is a constructor signature. It denotes a class that can be instantiated with 'new' and will produce an instance of type T.
         const pluginInstance = new pluginClass(this);
+        if(this.pluginsMap.has(pluginClass.name)) {
+            throw new Error(`Plugin '${pluginClass.name}' is already registered.`);
+        }
         this.pluginsMap.set(pluginClass.name, pluginInstance);
     }
 
@@ -211,19 +239,29 @@ export class Core implements ICore {
 
     }
 
-    public async asyncShutdown(signal: Deno.Signal)  {
+    public async runUpdate(delta: number, source: string) {
+        for(const plugin of this.plugins) {
+            await plugin.atUpdate(delta, source);
+        }
+        for(const connection of this.connections.values()) {
+            await connection.atUpdate(delta, source);
+        }
+    }
+
+    public async signalHandler(signal: Deno.Signal)  {
         switch(signal) {
             case "SIGINT":
                 log.critical("Received SIGINT! Performing graceful shutdown...");
                 await this.atShutdown();
-                return 0;
+                Deno.exit(0);
+                break;
             case "SIGBREAK":
             case "SIGUSR1":
                 log.critical(`Received ${signal}! Performing reload...`);
                 await this.atReload();
-                return 1;
+                Deno.exit(1);
+                break;
         }
-
     }
 
     public async run() {
@@ -231,15 +269,17 @@ export class Core implements ICore {
 
         for (const s of sig) {
             Deno.addSignalListener(s, () => {
-                this.asyncShutdown(s).then((out) => {
-                    log.critical("Shutting down...");
-                    Deno.exit(out);
-                });
-
+                this.signalHandler(s);
             });
         }
 
         await Promise.all(this.services);
+    }
+
+    public async handleConnection(connection: IConnection) {
+        this.connections.set(connection.getIdentifier(), connection);
+        await connection.run();
+        this.connections.delete(connection.getIdentifier());
     }
 
 }
